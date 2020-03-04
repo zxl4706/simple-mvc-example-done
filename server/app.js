@@ -67,7 +67,9 @@ app.use(bodyParser.json());
 // app.set sets one of the express config options
 // set up the view (V of MVC) to use handlebars
 // You can use other view engines besides handlebars
-app.engine('handlebars', expressHandlebars());
+app.engine('handlebars', expressHandlebars({
+  defaultLayout: '',
+}));
 app.set('view engine', 'handlebars');
 
 // set the views path to the template directory
