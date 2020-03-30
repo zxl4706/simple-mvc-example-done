@@ -4,6 +4,9 @@ const models = require('../models');
 // get the Cat model
 const Cat = models.Cat.CatModel;
 
+// get the Dog model
+const Dog = models.Dog.DogModel;
+
 // default fake data so that we have something to work with until we make a real Cat
 const defaultData = {
   name: 'unknown',
@@ -43,6 +46,10 @@ const readAllCats = (req, res, callback) => {
   // The lean function will force find to return data in the js
   // object format, rather than the Mongo document format.
   Cat.find(callback).lean();
+};
+
+const readAllDogs = (req, res, callback) => {
+  Dog.find(callback).lean();
 };
 
 
@@ -105,13 +112,26 @@ const hostPage2 = (req, res) => {
 // controller functions in Express receive the full HTTP request
 // and a pre-filled out response object to send
 const hostPage3 = (req, res) => {
-    // res.render takes a name of a page to render.
-    // These must be in the folder you specified as views in your main app.js file
-    // Additionally, you don't need .jade because you registered the file type
-    // in the app.js as jade. Calling res.render('index')
-    // actually calls index.jade. A second parameter of JSON can be passed
-    // into the jade to be used as variables with #{varName}
+  // res.render takes a name of a page to render.
+  // These must be in the folder you specified as views in your main app.js file
+  // Additionally, you don't need .jade because you registered the file type
+  // in the app.js as jade. Calling res.render('index')
+  // actually calls index.jade. A second parameter of JSON can be passed
+  // into the jade to be used as variables with #{varName}
   res.render('page3');
+};
+
+const hostPage4 = (req, res) => {
+  const callback = (err, docs) => {
+    if (err) {
+      return res.status(500).json({ err }); // if error, return it
+    }
+
+    // return success
+    return res.render('page4', { dogs: docs });
+  };
+
+  readAllDogs(req, res, callback);
 };
 
 // function to handle get request to send the name
@@ -122,6 +142,40 @@ const getName = (req, res) => {
   // Since this sends back the data through HTTP
   // you can't send any more data to this user until the next response
   res.json({ name: lastAdded.name });
+};
+
+
+const searchDogThenUpdate = (req, res) => {
+  if (!req.body.name) {
+    return res.status(400).json({ error: 'Name is required to perform a search' });
+  }
+
+  return Dog.findByName(req.body.name, (err, doc) => {
+    // if no matches, let them know
+    // (does not necessarily have to be an error since technically it worked correctly)
+    if (!doc) {
+      return res.json({ error: 'No dogs found' });
+    }
+
+    // if a match, send the match back
+    // return res.json({ name: doc.name, breed: doc.breed });
+
+    const updateDog = doc;
+    updateDog.age++;
+
+    const savePromise = updateDog.save();
+
+    // send back the name as a success for now
+    savePromise.then(() => res.json({
+      name: updateDog.name,
+      breed: updateDog.breed,
+      age: updateDog.age,
+      createdDate: updateDog.createdDate,
+    }));
+
+    // if save error, just return an error for now
+    return savePromise.catch(() => res.status(500).json({ err }));
+  });
 };
 
 // function to handle a request to set the name
@@ -168,6 +222,39 @@ const setName = (req, res) => {
   return res;
 };
 
+const addDog = (req, res) => {
+  if (!req.body.name || !req.body.breed || !req.body.age) {
+    return res.status(400).json({ error: 'name, breed, and age are all required' });
+  }
+
+  // if required fields are good, then set name
+  const name = `${req.body.name}`;
+  const breed = `${req.body.breed}`;
+
+  // dummy JSON to insert into database
+  const dogData = {
+    name,
+    breed,
+    age: req.body.age,
+  };
+
+  const newDog = new Dog(dogData);
+
+  // create new save promise for the database
+  const savePromise = newDog.save();
+
+  savePromise.then(() => {
+    // return success
+    res.json({
+      name: newDog.name, breed: newDog.breed, age: newDog.age, createdDate: newDog.createdDate,
+    });
+  });
+
+  // if error, return it
+  savePromise.catch((err) => res.status(500).json({ err }));
+
+  return res;
+};
 
 // function to handle requests search for a name and return the object
 // controller functions in Express receive the full HTTP request
@@ -205,6 +292,44 @@ const searchName = (req, res) => {
 
     // if a match, send the match back
     return res.json({ name: doc.name, beds: doc.bedsOwned });
+  });
+};
+
+const searchDogName = (req, res) => {
+  // check if there is a query parameter for name
+  // BUT WAIT!!?!
+  // Why is this req.query and not req.body like the others
+  // This is a GET request. Those come as query parameters in the URL
+  // For POST requests like the other ones in here, those come in a
+  // request body because they aren't a query
+  // POSTS send data to add while GETS query for a page or data (such as a search)
+  if (!req.query.name) {
+    return res.status(400).json({ error: 'Name is required to perform a search' });
+  }
+
+  // Call our Cat's static findByName function.
+  // Since this is a static function, we can just call it without an object
+  // pass in a callback (like we specified in the Cat model
+  // Normally would you break this code up, but I'm trying to keep it
+  // together so it's easier to see how the system works
+  // For that reason, I gave it an anonymous callback instead of a
+  // named function you'd have to go find
+  return Dog.findByName(req.query.name, (err, doc) => {
+    // errs, handle them
+    if (err) {
+      return res.status(500).json({ err }); // if error, return it
+    }
+
+    // if no matches, let them know
+    // (does not necessarily have to be an error since technically it worked correctly)
+    if (!doc) {
+      return res.json({ error: 'No dogs found' });
+    }
+
+    // if a match, send the match back
+    return res.json({
+      name: doc.name, breed: doc.breed, age: doc.age, createdDate: doc.createdDate,
+    });
   });
 };
 
@@ -255,10 +380,14 @@ module.exports = {
   page1: hostPage1,
   page2: hostPage2,
   page3: hostPage3,
+  page4: hostPage4,
   readCat,
   getName,
   setName,
+  addDog,
   updateLast,
   searchName,
+  searchDogName,
+  searchDogThenUpdate,
   notFound,
 };
